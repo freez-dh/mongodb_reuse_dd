@@ -87,11 +87,9 @@ namespace mongo {
     }
 
     void appendUnset( BSONBuilderBase& builder ) {
-		/*
         if ( builder.isArray() ) {
             builder.appendNull();
         }
-		*/
     }
 
     void Mod::apply( BSONBuilderBase& builder , BSONElement in , ModState& ms ) const {
