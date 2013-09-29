@@ -35,7 +35,7 @@ namespace mongo {
 
     const char* Mod::modNames[] = { "$inc", "$set", "$push", "$pushAll", "$pull", "$pullAll" , "$pop", "$unset" ,
                                     "$bitand" , "$bitor" , "$bit" , "$addToSet", "$rename", "$rename" ,
-                                    "$setOnInsert"
+                                    "$setOnInsert", "$removeat"
                                   };
     unsigned Mod::modNamesNum = sizeof(Mod::modNames)/sizeof(char*);
 
@@ -505,6 +505,28 @@ namespace mongo {
             ms.handleRename( builder, shortFieldName );
             break;
         }
+		case REMOVE_AT: {
+            BSONArrayBuilder bb( builder.subarrayStart( shortFieldName ) );
+
+
+            BSONObjIterator i( in.embeddedObject() );
+			uassert( 16986 , "$reomveat value must be number", elt.isNumber());
+			int remove_index = elt.numberInt();
+			int arr_index = 0;
+			while (i.more())
+			{
+				BSONElement ie = i.next();
+				if (arr_index != remove_index)
+				{
+					bb.append(ie);
+				}
+				arr_index++;
+			}
+            ms.fixedOpName = "$set";
+            ms.forceEmptyArray = true;
+            ms.fixedArray = BSONArray(bb.done().getOwned());
+			break;
+		}
 
         default:
             uasserted( 9017 , str::stream() << "Mod::apply can't handle type: " << op );
@@ -713,6 +735,25 @@ namespace mongo {
                 }
                 break;
             }
+			case Mod::REMOVE_AT: {
+                uassert( 16987,
+                         "Cannot apply $removeat modifier to non-array",
+                         e.type() == Array || e.eoo() );
+				if (e.eoo())
+				{
+					ms.dontApply = true;
+					mss->amIInPlacePossible( true );
+				}
+				else
+				{
+					BSONObjIterator i( e.embeddedObject() );
+					int arr_size = 0;
+					int remove_idx = m.elt.numberInt();
+					while (i.more()) {i.next(); ++arr_size;}
+					mss->amIInPlacePossible(remove_idx < 0 || remove_idx >= arr_size);
+				}
+				break;
+			 }
 
             default:
                 // mods we don't know about shouldn't be done in place
@@ -900,6 +941,8 @@ namespace mongo {
             case Mod::SET_ON_INSERT:
                 // this should have been handled by prepare
                 break;
+			case Mod::REMOVE_AT:
+				break;
 
             default:
                 uassert( 13478 ,  "can't apply mod in place - shouldn't have gotten here" , 0 );
