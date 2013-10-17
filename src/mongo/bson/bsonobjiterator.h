@@ -53,7 +53,7 @@ namespace mongo {
         }
 
         /** @return true if more elements exist to be enumerated. */
-        bool more() { return _pos < _theend; }
+        bool more() { skipDeletedData(); return _pos < _theend; }
 
         /** @return true if more elements exist to be enumerated INCLUDING the EOO element which is always at the end. */
         bool moreWithEOO() { return _pos <= _theend; }
@@ -61,6 +61,7 @@ namespace mongo {
         /** @return the next element in the object. For the final element, element.eoo() will be true. */
         BSONElement next( bool checkEnd ) {
             verify( _pos <= _theend );
+			skipDeletedData();
             
             int maxLen = -1;
             if ( checkEnd ) {
@@ -77,6 +78,7 @@ namespace mongo {
         }
         BSONElement next() {
             verify( _pos <= _theend );
+			skipDeletedData();
             BSONElement e(_pos);
             _pos += e.size();
             return e;
@@ -88,6 +90,26 @@ namespace mongo {
             verify( _pos <= _theend );
             return BSONElement(_pos);
         }
+        BSONElement nextDeletedData(){
+            verify( _pos <= _theend );
+            while ( _pos < _theend ) {
+				BSONElement e = this->operator*();
+				if ( e.type() == DeletedData ) break;
+                _pos += e.size();
+            }
+            return this->operator*();
+        }
+
+		void skipDeletedData() {
+			verify( _pos <= _theend );
+            while ( _pos <= _theend ) {
+				BSONElement e = this->operator*();
+				if ( e.type() == DeletedData ) {
+					_pos += e.size();
+				}
+				else break;
+			}
+		}
 
     private:
         const char* _pos;

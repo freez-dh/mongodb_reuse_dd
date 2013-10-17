@@ -574,6 +574,7 @@ dodouble:
             massert( 10315 ,  "Insufficient bytes to calculate element size", maxLen == -1 || remain > 3 );
             x = valuestrsize() + 4 + 12;
             break;
+		case DeletedData:
         case Object:
         case mongo::Array:
             massert( 10316 ,  "Insufficient bytes to calculate element size", maxLen == -1 || remain > 3 );
@@ -648,6 +649,7 @@ dodouble:
             x = valuestrsize() + 4 + 12;
             break;
         case CodeWScope:
+		case DeletedData:
         case Object:
         case mongo::Array:
             x = objsize();
@@ -703,6 +705,9 @@ dodouble:
         case EOO:
             s << "EOO";
             break;
+		case DeletedData:
+			s << "DeletedData";
+			break;
         case mongo::Date:
             s << "new Date(" << (long long) date() << ')';
             break;
@@ -838,6 +843,20 @@ dodouble:
         static char p[] = { /*size*/5, 0, 0, 0, /*eoo*/0 };
         _objdata = p;
     }
+
+	inline int BSONObj::paddSize() const {
+		int res = 0;
+		BSONObjIterator it(*this);
+		while (it.more())
+		{
+			BSONElement ele = it.next();
+			if (strcmp(ele.fieldName(), "_padd") == 0)
+			{
+				res += ele.valuesize();
+			}
+		}
+		return res;
+	}
 
     inline BSONObj BSONElement::Obj() const { return embeddedObjectUserCheck(); }
 

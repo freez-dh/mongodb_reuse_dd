@@ -508,6 +508,8 @@ namespace mongo {
         return *this;
     }
 
+	int paddSize() const;
+
     private:
         const char *_objdata;
         boost::intrusive_ptr< Holder > _holder;

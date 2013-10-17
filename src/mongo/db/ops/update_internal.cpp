@@ -30,6 +30,7 @@
 
 //#define DEBUGUPDATE(x) cout << x << endl;
 #define DEBUGUPDATE(x)
+static int gNeedPadd = 1;
 
 namespace mongo {
 
@@ -140,6 +141,7 @@ namespace mongo {
 
             // Start the resulting array's builder.
             BSONArrayBuilder bb( builder.subarrayStart( shortFieldName ) );
+			dynamic_cast<BSONObjBuilder*>(&builder)->appendDeletedData("test", "1234", 5);
 
             // If in the single element push case, we'll copy all elements of the existing
             // array and add the new one.
@@ -584,7 +586,20 @@ namespace mongo {
                 }
             }
 
-            BSONElement e = obj.getFieldDotted(m.fieldName);
+			BSONElement e;
+			BSONObj parent;
+			if ( m.shortFieldName != m.fieldName ) {
+				std::string left ( m.fieldName, m.shortFieldName - 1);
+				BSONElement parentEle = obj.getFieldDotted(left.c_str());
+				if ( ( parentEle.type() == Object ) || ( parentEle.type() == Array ) ) {
+					parent = parentEle.embeddedObject();
+					e = parent.getFieldDotted(m.shortFieldName);
+				}
+			}
+			else {
+                parent = obj;
+                e = obj.getFieldDotted(m.fieldName);
+            }
 
             ms.m = &m;
             ms.old = e;
@@ -612,10 +627,11 @@ namespace mongo {
                 continue;
             }
 
-            if ( m.op != Mod::SET_ON_INSERT && e.eoo() ) {
+            if ( (m.op != Mod::SET_ON_INSERT && m.op != Mod::SET ) && e.eoo() ) {
                 mss->amIInPlacePossible( m.op == Mod::UNSET );
                 continue;
             }
+			bool canInPlace;
 
             switch( m.op ) {
             case Mod::INC:
@@ -635,8 +651,26 @@ namespace mongo {
                 break;
 
             case Mod::SET:
-                mss->amIInPlacePossible( m.elt.type() == e.type() &&
-                                         m.elt.valuesize() == e.valuesize() );
+				canInPlace = m.elt.type() == e.type() &&
+					m.elt.valuesize() == e.valuesize();
+				if ( !canInPlace && !e.ok() ) {
+                    BSONObjIterator it(parent);
+					BSONElement deletedData = it.nextDeletedData();
+					while ( deletedData.ok() ) {
+						int deletedSize = deletedData.size();
+                        // printf("deleted data size:%d\n", deletedSize);
+                        int setEleSize = m.elt.size();
+                        if ( deletedSize >= setEleSize + 6 ) {
+                            ms.deletedElt = deletedData;
+                            canInPlace = true;
+                            break;
+                        }
+                        it.skipDeletedData();
+                        deletedData = it.nextDeletedData();
+						// TODO(DH) replace exist ele or add new ele
+					}
+				}
+                mss->amIInPlacePossible( canInPlace );
                 break;
 
             case Mod::SET_ON_INSERT:
@@ -932,8 +966,12 @@ namespace mongo {
                 break;
 
             case Mod::SET:
-                if ( isOnDisk )
-                    BSONElementManipulator( m.old ).ReplaceTypeAndValue( m.m->elt );
+                if ( isOnDisk ) {
+                    if ( m.deletedElt.ok() ) {
+                        BSONElementManipulator( m.deletedElt ).ReuseInDeletedData( m.m->shortFieldName, m.m->elt );
+                    }
+                    else BSONElementManipulator( m.old ).ReplaceTypeAndValue( m.m->elt );
+                }
                 else
                     BSONElementManipulator( m.old ).replaceTypeAndValue( m.m->elt );
                 break;
@@ -1014,12 +1052,29 @@ namespace mongo {
         return make_pair( mstart, mend );
     }
 
+	void ModSetState::createNewObjFromModsWithObjPadd( const string& root,
+                                            BSONObjBuilder& builder,
+                                            const BSONObj& obj) {
+		static const char paddData[1024 * 1024] = {0};
+		bool needObjPadd = false;
+		int oldSize = builder.len();
+		createNewObjFromMods(root, builder, obj, &needObjPadd);
+		if (gNeedPadd && needObjPadd) {
+			int objSize = builder.len() - oldSize;
+			int paddSize = (int) objSize * 0.2;
+			paddSize = paddSize > (int)sizeof(paddData) ? (int)sizeof(paddData) : paddSize;
+			// printf("append delete data for %s, objSize:%d, paddSize:%d\n", root.c_str(), objSize, paddSize);
+			builder.appendDeletedData("", paddData, paddSize);
+		}
+		builder.done();
+	}
     void ModSetState::createNewObjFromMods( const string& root,
                                             BSONObjBuilder& builder,
-                                            const BSONObj& obj ) {
+                                            const BSONObj& obj,
+											bool* needObjPadd) {
         BSONObjIteratorSorted es( obj );
-        createNewFromMods( root, builder, es, modsForRoot( root ), LexNumCmp( true ) );
-    }
+        createNewFromMods( root, builder, es, modsForRoot( root ), LexNumCmp( true ), needObjPadd);
+	}
 
     void ModSetState::createNewArrayFromMods( const string& root,
                                               BSONArrayBuilder& builder,
@@ -1036,9 +1091,17 @@ namespace mongo {
                                          BSONBuilderBase& builder,
                                          BSONIteratorSorted& es,
                                          const ModStateRange& modRange,
-                                         const LexNumCmp& lexNumCmp ) {
+                                         const LexNumCmp& lexNumCmp,
+										 bool* needObjPadd) {
 
         DEBUGUPDATE( "\t\t createNewFromMods root: " << root );
+		bool _appendedNew = false;
+
+		if (needObjPadd != NULL)
+		{
+			*needObjPadd = _appendedNew;
+		}
+		int eleCount = 0;
         ModStateHolder::iterator m = modRange.first;
         const ModStateHolder::const_iterator mend = modRange.second;
         BSONElement e = es.next();
@@ -1052,6 +1115,7 @@ namespace mongo {
                 builder.append( e );
                 prevE = e;
                 e = es.next();
+				++eleCount;
                 continue;
             }
             prevE = e;
@@ -1079,6 +1143,7 @@ namespace mongo {
                     else {
                         // Since we're not applying the mod, we keep what was there before
                         builder.append( e );
+						++eleCount;
 
                         // Skip both as we're not applying this mod. Note that we'll advance
                         // the iterator on the mod side for all the mods that are under the
@@ -1100,14 +1165,15 @@ namespace mongo {
                     if ( e.type() == Object ) {
                         BSONObjBuilder bb( builder.subobjStart( e.fieldName() ) );
                         stringstream nr; nr << root << e.fieldName() << ".";
-                        createNewObjFromMods( nr.str() , bb , e.Obj() );
-                        bb.done();
+                        createNewObjFromModsWithObjPadd( nr.str() , bb , e.Obj() );
+						++eleCount;
                     }
                     else {
                         BSONArrayBuilder ba( builder.subarrayStart( e.fieldName() ) );
                         stringstream nr; nr << root << e.fieldName() << ".";
                         createNewArrayFromMods( nr.str() , ba , BSONArray( e.embeddedObject() ) );
                         ba.done();
+						++eleCount;
                     }
                     // inc both as we handled both
                     e = es.next();
@@ -1127,18 +1193,22 @@ namespace mongo {
             case LEFT_BEFORE: // Mod on a field that doesn't exist
                 DEBUGUPDATE( "\t\t\t\t creating new field for: " << m->second->m->fieldName );
                 _appendNewFromMods( root , *m->second , builder , onedownseen );
+				_appendedNew = true;
                 m++;
+				++eleCount;
                 continue;
             case SAME:
                 DEBUGUPDATE( "\t\t\t\t applying mod on: " << m->second->m->fieldName );
                 m->second->apply( builder , e );
                 e = es.next();
                 m++;
+				++eleCount;
                 continue;
             case RIGHT_BEFORE: // field that doesn't have a MOD
                 DEBUGUPDATE( "\t\t\t\t just copying" );
                 builder.append( e ); // if array, ignore field name
                 e = es.next();
+				++eleCount;
                 continue;
             case RIGHT_SUBFIELD:
                 massert( 10399 ,  "ModSet::createNewFromMods - RIGHT_SUBFIELD should be impossible" , 0 );
@@ -1153,18 +1223,27 @@ namespace mongo {
             DEBUGUPDATE( "\t\t\t copying: " << e.fieldName() );
             builder.append( e );  // if array, ignore field name
             e = es.next();
+			++eleCount;
         }
 
         // do mods that don't have fields already
         for ( ; m != mend; m++ ) {
             DEBUGUPDATE( "\t\t\t\t appending from mod at end: " << m->second->m->fieldName );
             _appendNewFromMods( root , *m->second , builder , onedownseen );
+			_appendedNew = true;
+			++eleCount;
         }
+		if (needObjPadd != NULL) {
+			// printf("root_name:%s, elecount %d, appendedNew:%d\n", root.c_str(), eleCount, _appendedNew);
+			if (eleCount > 1 && _appendedNew) {
+				*needObjPadd = true;
+			}
+		}
     }
 
     BSONObj ModSetState::createNewFromMods() {
         BSONObjBuilder b( (int)(_obj.objsize() * 1.1) );
-        createNewObjFromMods( "" , b , _obj );
+        createNewObjFromModsWithObjPadd( "" , b , _obj );
         return _newFromMods = b.obj();
     }
 

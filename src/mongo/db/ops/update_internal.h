@@ -459,6 +459,7 @@ namespace mongo {
         long long inclong;
 
         bool dontApply;
+        BSONElement deletedElt;
 
         ModState() {
             fixedOpName = 0;
@@ -559,12 +560,13 @@ namespace mongo {
 
         ModStateRange modsForRoot( const string& root );
 
-        void createNewObjFromMods( const string& root, BSONObjBuilder& b, const BSONObj& obj );
+        void createNewObjFromModsWithObjPadd( const string& root, BSONObjBuilder& b, const BSONObj& obj);
+        void createNewObjFromMods( const string& root, BSONObjBuilder& b, const BSONObj& obj, bool* needObjPadd = NULL);
         void createNewArrayFromMods( const string& root, BSONArrayBuilder& b,
                                     const BSONArray& arr );
 
         void createNewFromMods( const string& root , BSONBuilderBase& b , BSONIteratorSorted& es ,
-                               const ModStateRange& modRange , const LexNumCmp& lexNumCmp );
+                               const ModStateRange& modRange , const LexNumCmp& lexNumCmp, bool* needObjPadd = NULL);
 
         void _appendNewFromMods( const string& root , ModState& m , BSONBuilderBase& b , set<string>& onedownseen );
 

@@ -82,8 +82,10 @@ namespace mongo {
         Timestamp = 17,
         /** 64 bit integer */
         NumberLong = 18,
+        /** deleted */
+        DeletedData = 19,
         /** max type that is not MaxKey */
-        JSTypeMax=18,
+        JSTypeMax=19,
         /** larger than all other types */
         MaxKey=127
     };
@@ -118,6 +120,7 @@ namespace mongo {
         case MinKey:
         case MaxKey:
             return type;
+		case DeletedData:
         case EOO:
         case Undefined:
             return 0;

@@ -83,6 +83,7 @@ namespace mongo {
         case EOO:
         case Undefined:
         case jstNULL:
+		case DeletedData:
         case Object: // empty
             break;
 
@@ -134,6 +135,7 @@ namespace mongo {
         case MinKey:
         case MaxKey:
         case Undefined:
+		case DeletedData:
         case jstNULL:
             break;
 
@@ -262,6 +264,7 @@ namespace mongo {
     BSONObjBuilder& operator << (BSONObjBuilderValueStream& builder, const Value& val) {
         switch(val.getType()) {
         case EOO:          return builder.builder(); // nothing appended
+        case DeletedData:  return builder.builder(); // nothing appended
         case MinKey:       return builder << MINKEY;
         case MaxKey:       return builder << MAXKEY;
         case jstNULL:      return builder << BSONNULL;
@@ -337,6 +340,7 @@ namespace mongo {
         case EOO:
         case jstNULL:
         case Undefined:
+		case DeletedData:
             return false;
 
         case Bool: return _storage.boolValue;
@@ -500,6 +504,7 @@ namespace mongo {
         case EOO:
         case jstNULL:
         case Undefined:
+		case DeletedData:
             return "";
 
         default:
@@ -575,6 +580,7 @@ namespace mongo {
         case jstNULL:
         case MaxKey:
         case MinKey:
+		case DeletedData:
             return ret;
 
         case Bool:
@@ -688,6 +694,7 @@ namespace mongo {
         case jstNULL:
         case MaxKey:
         case MinKey:
+		case DeletedData:
             return;
 
         case Bool:
@@ -865,6 +872,7 @@ namespace mongo {
         case NumberLong:
         case jstNULL:
         case Undefined:
+		case DeletedData:
             return sizeof(Value);
         }
         verify(false);
@@ -880,6 +888,7 @@ namespace mongo {
     ostream& operator << (ostream& out, const Value& val) {
         switch(val.getType()) {
         case EOO: return out << "MISSING";
+        case DeletedData: return out << "DeletedData";
         case MinKey: return out << "MinKey";
         case MaxKey: return out << "MaxKey";
         case jstOID: return out << val.getOid();

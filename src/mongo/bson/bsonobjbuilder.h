@@ -275,6 +275,14 @@ namespace mongo {
             return *this;
         }
 
+		BSONObjBuilder& appendDeletedData(const StringData& fieldName, const char* data, uint32_t data_len){
+			_b.appendNum((char) DeletedData);
+            _b.appendStr(fieldName);
+			_b.appendNum((uint32_t)(data_len + sizeof(data_len)));
+			_b.appendBuf(data, data_len);
+			return *this;
+		}
+
         /**
         Append a BSON Object ID.
         @param fieldName Field name, e.g., "_id".

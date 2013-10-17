@@ -235,6 +235,9 @@ namespace mongo {
         if ( logLevel >= 6 ) {
             LOG( 6 ) << "logOp:" << BSONObj::make(r) << endl;
         }
+		std::stringstream ss; 
+		ss << "logOp:" << BSONObj::make(r) << endl;
+		printf("%s\n", ss.str().c_str());
     }
 
     static void _logOpOld(const char *opstr, const char *ns, const char *logNS, const BSONObj& obj, BSONObj *o2, bool *bb, bool fromMigrate ) {

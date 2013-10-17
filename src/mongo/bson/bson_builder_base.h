@@ -53,6 +53,8 @@ namespace mongo {
         virtual BSONBuilderBase& operator<<( const BSONElement& e ) = 0;
 
         virtual bool isArray() const = 0;
+        
+        virtual int len() const =0;
     };
 
 } // namespace mongo

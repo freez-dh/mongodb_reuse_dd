@@ -67,6 +67,8 @@ namespace mongo {
         /* dur:: version */
         void ReplaceTypeAndValue( const BSONElement &e );
 
+        void ReuseInDeletedData( const char* shortFieldName, const BSONElement &setElt );
+
         static void lookForTimestamps( const BSONObj& obj ) {
             // If have a Timestamp field as the first or second element,
             // update it to a Date field set to OpTime::now().asDate().  The
