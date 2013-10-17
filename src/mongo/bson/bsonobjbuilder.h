@@ -276,9 +276,14 @@ namespace mongo {
         }
 
 		BSONObjBuilder& appendDeletedData(const StringData& fieldName, const char* data, uint32_t data_len){
+            char sizeBuffer[5];
+            int writtenSize;
+            bool res = writeSizeHeader( sizeBuffer, sizeof(sizeBuffer),
+                    DeletedNormalNode, data_len, &writtenSize );
+            massert( 16990 , "writeSizeHeader res", res );
 			_b.appendNum((char) DeletedData);
             _b.appendStr(fieldName);
-			_b.appendNum((uint32_t)(data_len + sizeof(data_len)));
+			_b.appendBuf(sizeBuffer, writtenSize);
 			_b.appendBuf(data, data_len);
 			return *this;
 		}

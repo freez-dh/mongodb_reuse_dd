@@ -653,7 +653,8 @@ namespace mongo {
             case Mod::SET:
 				canInPlace = m.elt.type() == e.type() &&
 					m.elt.valuesize() == e.valuesize();
-				if ( !canInPlace && !e.ok() ) {
+                static int sReuseDeletedData = 0;
+				if ( !canInPlace && !e.ok() && sReuseDeletedData) {
                     BSONObjIterator it(parent);
 					BSONElement deletedData = it.nextDeletedData();
 					while ( deletedData.ok() ) {

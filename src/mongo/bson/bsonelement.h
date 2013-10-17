@@ -41,6 +41,22 @@ namespace bson {
 
 namespace mongo {
 
+    enum DeletedDataType {
+        DeletedHeaderNode = 0,
+        DeletedTooSmall = 1,
+        DeletedNormalNode = 2,
+        DeletedReserved = 3,
+    };
+
+    bool readSizeHeader( const char* buffer, int bufferSize, DeletedDataType* dataType,
+            int* size, int* readedSize = NULL);
+
+    bool writeSizeHeader( char* buffer, int bufferSize, DeletedDataType dataType,
+            int size, int* writtenSize = NULL );
+
+    int calSizeHeaderNeedSize(int size);
+
+
     /* l and r MUST have same type when called: check that first. */
     int compareElementValues(const BSONElement& l, const BSONElement& r);
 
@@ -240,6 +256,14 @@ namespace mongo {
         // for objects the size *includes* the size of the size field
         size_t objsize() const {
             return static_cast< const size_t >( *reinterpret_cast< const uint32_t* >( value() ) );
+        }
+
+        size_t deletedsize() const {
+            int res, readedSize;
+            // not safe because bufferSize cann't be determined
+            bool readRes = readSizeHeader( value(), 1024, NULL, &res, &readedSize );
+            massert( 16989, "deletedsize readRes" , readRes );
+            return static_cast<const size_t>( res + readedSize );
         }
 
         /** Get a string's value.  Also gives you start of the real data for an embedded object.
@@ -599,5 +623,93 @@ namespace mongo {
         fieldNameSize_ = 0;
         totalSize = 1;
     }
+
+    struct WrittenWriter
+    {
+        WrittenWriter( int *pos, int* writtenSize ) : pos(pos), writtenSize(writtenSize){
+        }
+        ~WrittenWriter() {
+            if ( writtenSize != NULL ) {
+                *writtenSize = *pos;
+            }
+        }
+        int* pos;
+        int* writtenSize;
+    };
+
+    inline int calSizeHeaderNeedSize(int size) {
+        if ( size < 0 ) {
+            return 0;
+        }
+        int res = 1;
+        size >>= 5;
+        while ( size != 0 ) {
+            ++res;
+            size >>= 7;
+        }
+        return res;
+    }
+
+    inline bool writeSizeHeader( char* buffer, int bufferSize, DeletedDataType dataType,
+            int size, int* writtenSize ) {
+        static char DeletedShifted[] = { (char)(DeletedHeaderNode << 6), (char)(DeletedTooSmall << 6),
+            (char)(DeletedNormalNode << 6), (char)(DeletedReserved << 6) };
+        int p = 0;
+        WrittenWriter writer( &p, writtenSize );
+        if ( bufferSize <= 0 || size < 0 ) {
+            return false;
+        }
+        buffer[0] = DeletedShifted[dataType];
+        char firstByte = size & ((1 << 5) - 1);
+        size >>= 5;
+        buffer[0] |= firstByte;
+        ++p;
+        if ( size != 0 ) {
+            buffer[0] |= 1 << 5;
+        }
+        else {
+            return true;
+        }
+        while ( size != 0 ) {
+            if ( p >= bufferSize ) {
+                return false;
+            }
+            buffer[p] = (size & 0x7f) | 0x80;
+            ++p;
+            size >>= 7;
+        }
+        buffer[p - 1] &= 0x7f;
+        return true;
+    }
+
+    inline bool readSizeHeader( const char* buffer, int bufferSize, DeletedDataType* dataType,
+            int* size, int *readedSize ) {
+        int p = 0;
+        WrittenWriter w( &p, readedSize );
+        if ( bufferSize <= 0 ) {
+            return false;
+        }
+        unsigned char firstByte = buffer[0];
+        if ( dataType != NULL ) {
+            *dataType = (DeletedDataType)(firstByte >> 6);
+        }
+        *size = firstByte & 0x1f;
+        bool cont = firstByte & (1 << 5);
+        if ( !cont ) {
+            return true;
+        }
+        p = 1;
+        int nextShift = 5;
+        while ( p < bufferSize && cont ) {
+            massert( 16988, "nextShift", nextShift < 32 );
+            char byte = buffer[p];
+            cont = byte >> 7;
+            *size |= (byte & 0x7f) << nextShift;
+            ++p;
+            nextShift += 7;
+        }
+        return !cont;
+    }
+
 
 }

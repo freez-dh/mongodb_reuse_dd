@@ -575,6 +575,9 @@ dodouble:
             x = valuestrsize() + 4 + 12;
             break;
 		case DeletedData:
+            massert( 16991 ,  "Insufficient bytes to calculate element size", maxLen == -1 || remain > 3 );
+            x = deletedsize();
+            break;
         case Object:
         case mongo::Array:
             massert( 10316 ,  "Insufficient bytes to calculate element size", maxLen == -1 || remain > 3 );
@@ -650,6 +653,8 @@ dodouble:
             break;
         case CodeWScope:
 		case DeletedData:
+            x = deletedsize();
+            break;
         case Object:
         case mongo::Array:
             x = objsize();
