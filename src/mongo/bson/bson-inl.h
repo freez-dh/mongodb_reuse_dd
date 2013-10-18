@@ -575,7 +575,7 @@ dodouble:
             x = valuestrsize() + 4 + 12;
             break;
 		case DeletedData:
-            massert( 16991 ,  "Insufficient bytes to calculate element size", maxLen == -1 || remain > 3 );
+            massert( 16993 ,  "Insufficient bytes to calculate element size", maxLen == -1 || remain > 3 );
             x = deletedsize();
             break;
         case Object:

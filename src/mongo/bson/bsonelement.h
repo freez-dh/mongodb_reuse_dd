@@ -259,11 +259,22 @@ namespace mongo {
         }
 
         size_t deletedsize() const {
-            int res, readedSize;
+            int res;
             // not safe because bufferSize cann't be determined
-            bool readRes = readSizeHeader( value(), 1024, NULL, &res, &readedSize );
+            bool readRes = readSizeHeader( value(), 1024, NULL, &res );
             massert( 16989, "deletedsize readRes" , readRes );
-            return static_cast<const size_t>( res + readedSize );
+            return static_cast<const size_t>( res );
+        }
+
+        DeletedDataType deletedtype() const {
+            DeletedDataType type;
+            int res;
+            readSizeHeader( value(), 1024, &type, &res );
+            return type;
+        }
+
+        int* deletedheadpointer() const {
+            return (int*)( value() + 1 );
         }
 
         /** Get a string's value.  Also gives you start of the real data for an embedded object.
@@ -693,12 +704,12 @@ namespace mongo {
         if ( dataType != NULL ) {
             *dataType = (DeletedDataType)(firstByte >> 6);
         }
+        p = 1;
         *size = firstByte & 0x1f;
         bool cont = firstByte & (1 << 5);
         if ( !cont ) {
             return true;
         }
-        p = 1;
         int nextShift = 5;
         while ( p < bufferSize && cont ) {
             massert( 16988, "nextShift", nextShift < 32 );

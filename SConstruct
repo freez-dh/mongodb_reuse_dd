@@ -358,8 +358,6 @@ if has_option( "cxx" ):
 elif has_option("clang"):
     env["CC"] = 'clang'
     env["CXX"] = 'clang++'
-env["CC"] = 'ccache gcc'
-env["CXX"] = 'ccache g++'
 
 if has_option( "cc" ):
     env["CC"] = get_option( "cc" )

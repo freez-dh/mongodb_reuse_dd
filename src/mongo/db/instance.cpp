@@ -151,19 +151,26 @@ namespace mongo {
         *p = e.type();
         memcpy( p + ofs, e.value(), valsize );
     }
-    void BSONElementManipulator::ReuseInDeletedData( const char* shortFieldName, const BSONElement &e ) {
-		int deletedSize = _element.size();
+    void BSONElementManipulator::ReuseInDeletedData( const char* shortFieldName,
+            const BSONElement &e,
+            const BSONElement &headNode) {
+        int deletedSize = _element.size();
         char *d = data();
-		int fieldNameSize = strlen(shortFieldName) + 1;
-		int valSize = e.valuesize();
+        int fieldNameSize = strlen(shortFieldName) + 1;
+        int valSize = e.valuesize();
         int objSize = valSize + fieldNameSize + 1;
-        char *p = (char *) getDur().writingPtr(d, objSize + 6);
-		*p = e.type();
-		memcpy(p + 1, shortFieldName, fieldNameSize);
+        char *p = (char *) getDur().writingPtr(d, objSize + 7);
+        *p = e.type();
+        memcpy(p + 1, shortFieldName, fieldNameSize);
         memcpy(p + 1 + fieldNameSize , e.value(), valSize);
         *(p + objSize) = (char) DeletedData;
         *(p + objSize + 1) = '\0';
-        *(int*)(p + objSize + 2) =  deletedSize - objSize - 2;
+        bool res = writeSizeHeader( p + objSize + 2, 5,
+                DeletedNormalNode, deletedSize - objSize - 2);
+        massert( 16994, "Reuse in deleted data write size header", res );
+        int* pointer = headNode.deletedheadpointer();
+        pointer= (int*) getDur().writingPtr(pointer, sizeof(int));
+        *pointer = (p + objSize - (char*)pointer);
     }
 
     void inProgCmd( Message &m, DbResponse &dbresponse ) {

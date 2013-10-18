@@ -67,7 +67,9 @@ namespace mongo {
         /* dur:: version */
         void ReplaceTypeAndValue( const BSONElement &e );
 
-        void ReuseInDeletedData( const char* shortFieldName, const BSONElement &setElt );
+        void ReuseInDeletedData( const char* shortFieldName,
+                const BSONElement &setElt,
+                const BSONElement &headNode);
 
         static void lookForTimestamps( const BSONObj& obj ) {
             // If have a Timestamp field as the first or second element,

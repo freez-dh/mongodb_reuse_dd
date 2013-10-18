@@ -275,18 +275,43 @@ namespace mongo {
             return *this;
         }
 
-		BSONObjBuilder& appendDeletedData(const StringData& fieldName, const char* data, uint32_t data_len){
+		BSONObjBuilder& appendDeletedData( uint32_t dataLen ) {
+            static const char sPaddData[1024 * 1024 * 10] = {0};
+            static const size_t sPaddMaxSize = sizeof(sPaddData);
+            if ( dataLen == 0 || dataLen > sPaddMaxSize ) {
+                massert( 16990 , "Padd size invalid", false );
+            }
             char sizeBuffer[5];
             int writtenSize;
             bool res = writeSizeHeader( sizeBuffer, sizeof(sizeBuffer),
-                    DeletedNormalNode, data_len, &writtenSize );
-            massert( 16990 , "writeSizeHeader res", res );
+                    DeletedNormalNode, dataLen, &writtenSize );
+            massert( 16991 , "writeSizeHeader res", res );
+            long remainSize = dataLen;
+            remainSize -= writtenSize;
+            massert( 16992 , "Remain size invalid", remainSize >= 0 );
 			_b.appendNum((char) DeletedData);
-            _b.appendStr(fieldName);
+            _b.appendStr("");
 			_b.appendBuf(sizeBuffer, writtenSize);
-			_b.appendBuf(data, data_len);
+			_b.appendBuf(sPaddData, remainSize);
 			return *this;
 		}
+
+        BSONObjBuilder& appendDeletedHeadNode( int* pointerStartLen = NULL ) {
+            static const int32_t sPointer = 0;
+            static const size_t sPointerSize = sizeof(sPointer);
+            uint32_t nodeSize = sizeof(uint32_t) + 1;
+            char sizeBuffer[1];
+            int writtenSize;
+            bool res = writeSizeHeader( sizeBuffer, sizeof(sizeBuffer),
+                    DeletedHeaderNode, nodeSize, &writtenSize );
+            massert( 16995 , "Head node append", (writtenSize == 1) && res );
+			_b.appendNum((char) DeletedData);
+            _b.appendStr("");
+			_b.appendBuf(sizeBuffer, writtenSize);
+            if ( pointerStartLen != NULL ) *pointerStartLen = _b.len();
+			_b.appendBuf(&sPointer, sPointerSize);
+            return *this;
+        }
 
         /**
         Append a BSON Object ID.

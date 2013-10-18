@@ -459,6 +459,7 @@ namespace mongo {
         long long inclong;
 
         bool dontApply;
+        BSONElement deletedHeadElt;
         BSONElement deletedElt;
 
         ModState() {
